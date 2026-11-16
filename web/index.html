@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="Inspect public DNS, mail policies, DNSSEC signals and RDAP registration from your browser.">
+  <title>DNS Lens · CoolCode</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to lookup</a>
+  <header class="mast">
+    <div class="wrap mast-inner">
+      <a class="brand" href="https://coolcode.ca/"><span aria-hidden="true">&gt;_</span> CoolCode<span class="tld">.ca</span></a>
+      <a class="nav-link" href="https://coolcode.ca/routearchaeologist/">Route Archaeologist ↗</a>
+      <button id="theme" type="button" aria-pressed="false">Dark mode</button>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <p class="context">Network diagnostics</p>
+          <h1>DNS <em>Lens</em></h1>
+          <p class="intro">Inspect what a public resolver sees. Check DNS records, mail policies, DNSSEC signals, and registration.</p>
+        </div>
+        <div class="terminal">
+          <form id="lookup">
+            <label for="host">Domain or IP address</label>
+            <div class="input-line">
+              <input id="host" type="text" inputmode="url" maxlength="512" autocapitalize="none" spellcheck="false" placeholder="coolcode.ca" required>
+              <button class="primary" type="submit">Look up</button>
+            </div>
+            <label class="choice" for="resolver">
+              Resolver
+              <select id="resolver"><option value="google">Google Public DNS</option><option value="cloudflare">Cloudflare 1.1.1.1</option></select>
+            </label>
+          </form>
+          <div class="samples" aria-label="Example searches">
+            <button type="button" data-example="coolcode.ca">coolcode.ca</button>
+            <button type="button" data-example="canada.ca">canada.ca</button>
+            <button type="button" data-example="8.8.8.8">8.8.8.8</button>
+            <button type="button" data-example="2606:4700:4700::1111">IPv6 example</button>
+          </div>
+          <p class="privacy">On lookup, the name or address goes to the selected public resolver and the relevant RDAP service.</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="wrap workbench">
+      <p id="state" class="state" role="status">Enter a public domain or IP address, or try an example.</p>
+      <div id="result" hidden>
+        <div class="report-head">
+          <div><h2 id="report-title"></h2><p id="provenance" class="muted"></p></div>
+          <div class="tools"><button id="copy" type="button">Copy report</button><button id="export" type="button">Download JSON</button></div>
+        </div>
+        <div id="summary" class="ledger" aria-label="Lookup summary"></div>
+        <div class="results-grid">
+          <section class="panel" aria-labelledby="dns-heading">
+            <div class="panel-head"><h2 id="dns-heading">DNS records</h2></div>
+            <div id="records"></div>
+          </section>
+          <div class="side">
+            <section class="panel" id="email-panel" aria-labelledby="email-heading" hidden>
+              <div class="panel-head"><h2 id="email-heading">Mail policy</h2><p class="muted">Checks at the queried domain. SPF includes and inherited DMARC policies are outside this lookup.</p></div>
+              <div id="email"></div>
+            </section>
+            <section class="panel" aria-labelledby="rdap-heading">
+              <div class="panel-head"><h2 id="rdap-heading">RDAP registration</h2></div>
+              <div id="rdap"></div>
+            </section>
+          </div>
+        </div>
+      </div>
+      <noscript><p>This lookup requires JavaScript to contact public DNS and registration services.</p></noscript>
+    </div>
+  </main>
+  <footer>
+    <div class="wrap footer-inner">
+      <span>DNS Lens · CoolCode</span>
+      <ul><li><a href="https://developers.google.com/speed/public-dns/docs/doh/json">Google DoH</a></li><li><a href="https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https/make-api-requests/dns-json/">Cloudflare DoH</a></li><li><a href="https://www.iana.org/assignments/rdap-dns">IANA bootstrap</a></li><li><a href="https://github.com/jsdyer/dnslens">Source</a></li></ul>
+    </div>
+  </footer>
+</body>
+</html>
