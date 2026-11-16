@@ -1,5 +1,5 @@
 import {
-  answersFor, emailFindings, exportText, normalizeInput, parseDns, queryTypes,
+  answersFor, compareRecordSets, emailFindings, exportText, normalizeInput, parseDns, queryTypes,
   registrationCandidates, registryFor, resolvers, rrTypes, statusNames,
 } from './model.mjs';
 
@@ -52,7 +52,7 @@ function reachability(error) {
 
 async function queryDNS(target, resolver, signal) {
   const url = new URL(resolver.endpoint);
-  url.search = new URLSearchParams({ name: target.name, type: target.type, do: '1' });
+  url.search = new URLSearchParams({ name: target.name, type: String(rrTypes[target.type] ?? target.type), do: '1' });
   const started = performance.now();
   const elapsed = () => Math.round(performance.now() - started);
   try {
@@ -140,6 +140,53 @@ function renderRecords(data) {
     return item;
   });
   get('records').replaceChildren(...all);
+}
+
+function renderComparison(data) {
+  get('divergence').hidden = !data?.comparison;
+  if (!data?.comparison) return;
+  const pairs = data.dns.map((first, index) => {
+    const second = data.comparison.dns[index];
+    return { first, second, outcome: compareRecordSets(first, second) };
+  });
+  const summary = new Map();
+  for (const { outcome } of pairs) summary.set(outcome, (summary.get(outcome) ?? 0) + 1);
+  get('divergence-summary').textContent = [
+    (summary.get('same') ?? 0) + ' matching',
+    (summary.get('different') ?? 0) + ' answer differences',
+    (summary.get('dnssec') ?? 0) + ' DNSSEC flag differences',
+    (summary.get('unavailable') ?? 0) + ' unavailable',
+  ].join(' · ');
+  const labels = {
+    same: ['Same record set', 'ok'],
+    different: ['Different result', 'warn'],
+    dnssec: ['DNSSEC flags differ', 'warn'],
+    unavailable: ['Comparison unavailable', 'issue'],
+  };
+  const rows = pairs.filter(({ outcome }) => outcome !== 'same' || !get('differences-only').checked);
+  get('comparison-pairs').replaceChildren(...rows.map(({ first, second, outcome }) => {
+    const detail = element('details');
+    detail.open = outcome === 'different' || outcome === 'dnssec';
+    const title = element('summary', first.type + (first.name === data.target.value ? '' : ' · ' + first.name));
+    title.append(badge(...labels[outcome]));
+    const columns = element('div', undefined, 'resolver-pair');
+    for (const [name, entry] of [[data.resolver, first], [data.comparison.resolver, second]]) {
+      const column = element('div', undefined, 'resolver-column');
+      const [state] = dnsState(entry);
+      column.append(element('h3', name), element('p', state + ' · AD ' + (entry.failed ? 'unavailable' : entry.validated ? 'set' : 'clear'), 'muted'));
+      if (entry.failed) column.append(element('p', entry.failed, 'muted'));
+      for (const row of answersFor(entry)) {
+        const block = element('div', undefined, 'comparison-record');
+        block.append(element('span', row.name + ' · TTL ' + row.TTL + 's', 'muted'), element('code', row.data));
+        column.append(block);
+      }
+      column.append(link('Resolver response ↗', entry.source));
+      columns.append(column);
+    }
+    detail.append(title, columns);
+    return detail;
+  }));
+  if (!rows.length) get('comparison-pairs').append(element('p', 'All compared replies match.', 'muted divergence-note'));
 }
 
 function renderEmail(data, signal) {
@@ -281,25 +328,33 @@ async function runLookup(input) {
   const run = new AbortController();
   active = run;
   const signal = run.signal;
-  const resolver = resolvers[get('resolver').value] ?? resolvers.google;
-  status('Querying ' + resolver.name + ' for ' + target.value + '…');
+  const provider = get('resolver').value;
+  const compare = provider === 'both';
+  const resolver = resolvers[provider] ?? resolvers.google;
+  const source = compare ? 'Google Public DNS and Cloudflare' : resolver.name;
+  status('Querying ' + source + ' for ' + target.value + '…');
   get('result').hidden = true;
   report = null;
   const observed = new Date().toISOString();
   const registration = queryRegistration(target, signal);
-  const dns = await Promise.all(dnsTargets(target).map(query => queryDNS(query, resolver, signal)));
+  const targets = dnsTargets(target);
+  const resolveAll = server => Promise.all(targets.map(query => queryDNS(query, server, signal)));
+  const [dns, other] = await Promise.all([resolveAll(resolver), compare ? resolveAll(resolvers.cloudflare) : []]);
   if (signal.aborted) return;
   report = { target, observed, resolver: resolver.name, dns };
+  if (compare) report.comparison = { resolver: resolvers.cloudflare.name, dns: other };
   if (target.kind === 'domain') report.email = emailFindings(dns, target.value);
   get('report-title').textContent = target.value;
-  get('provenance').textContent = resolver.name + ' · ' + new Date(observed).toLocaleString() + ' · ' + observed;
+  get('provenance').textContent = source + ' · ' + new Date(observed).toLocaleString() + ' · ' + observed;
   const { answered, failures } = renderLedger(report);
   renderRecords(report);
+  renderComparison(report);
   renderEmail(report, signal);
   renderRDAP();
   get('result').hidden = false;
   status((
-    failures ? failures + ' of ' + dns.length + ' DNS lookups failed. '
+    compare ? 'Resolver comparison complete. '
+      : failures ? failures + ' of ' + dns.length + ' DNS lookups failed. '
       : answered.length ? 'DNS lookups complete. ' : 'No requested DNS records were returned. '
   ) + 'Registration lookup runs separately.');
   const current = await registration;
@@ -322,6 +377,8 @@ for (const control of document.querySelectorAll('[data-example]')) {
     get('lookup').requestSubmit();
   });
 }
+
+get('differences-only').addEventListener('change', () => renderComparison(report));
 
 get('copy').addEventListener('click', () => {
   if (report) copy(exportText(report), 'Report copied as plain text.');

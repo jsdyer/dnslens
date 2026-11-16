@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  answersFor, emailFindings, ipMatches, normalizeInput, parseDns, parseTxt, registrationCandidates, registryFor,
+  answersFor, compareRecordSets, emailFindings, ipMatches, normalizeInput, parseDns, parseTxt, registrationCandidates, registryFor,
 } from '../web/model.mjs';
 
 test('canonicalizes IDN and produces IPv4 and IPv6 reverse lookup names', () => {
@@ -56,4 +56,20 @@ test('preserves DNS failure responses and counts only the requested answer type'
   assert.equal(data.answers.length, 2);
   assert.equal(parseDns({ Status: 2 }, { name: 'example.ca', type: 'MX' }).status, 2);
   assert.throws(() => parseDns({}, {}));
+});
+
+test('resolver comparisons ignore order and TTL, but expose answer, status and AD differences', () => {
+  const make = (targets, options = {}) => ({
+    name: 'example.ca', type: 'MX', status: 0, validated: true, ...options,
+    answers: targets.map(([data, TTL]) => ({ name: 'Example.CA.', type: 15, data, TTL })),
+  });
+  const google = make([['10 MX.Example.CA.', 100], ['20 backup.example.ca.', 100]]);
+  const cloudflare = make([['20 backup.example.ca', 25], ['10 mx.example.ca', 25]]);
+  assert.equal(compareRecordSets(google, cloudflare), 'same');
+  assert.equal(compareRecordSets(google, { ...cloudflare, validated: false }), 'dnssec');
+  assert.equal(compareRecordSets(google, make([['20 backup.example.ca', 25]])), 'different');
+  assert.equal(compareRecordSets(make([]), make([], { status: 3 })), 'different');
+  for (const unavailable of [{ status: 2 }, { truncated: true }, { failed: 'Timeout' }]) {
+    assert.equal(compareRecordSets(google, { ...cloudflare, ...unavailable }), 'unavailable');
+  }
 });

@@ -24,3 +24,5 @@ Run `python3 scripts/build.py` and serve `dist/` over HTTP, for example with `py
 - [SPF RFC 7208](https://www.rfc-editor.org/rfc/rfc7208.html)
 - [DMARC RFC 9989](https://www.rfc-editor.org/rfc/rfc9989.html)
 - [MTA-STS RFC 8461](https://www.rfc-editor.org/rfc/rfc8461.html)
+
+The resolver menu includes a side-by-side Google and Cloudflare comparison. Record order and TTLs are excluded from the match test. Each resolver's DNSSEC AD flag and returned TTLs are visible independently. Timeouts, DNS failures and truncated replies are marked unavailable. In this mode the separate record and mail-policy panels reflect Google Public DNS, and both resolver results are included in exports.

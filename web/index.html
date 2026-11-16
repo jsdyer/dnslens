@@ -24,7 +24,7 @@
         <div>
           <p class="context">Network diagnostics</p>
           <h1>DNS <em>Lens</em></h1>
-          <p class="intro">Inspect what a public resolver sees. Check DNS records, mail policies, DNSSEC signals, and registration.</p>
+          <p class="intro">Inspect what a public resolver sees. Compare public resolvers or check DNS records, mail policies, DNSSEC signals and registration.</p>
         </div>
         <div class="terminal">
           <form id="lookup">
@@ -35,7 +35,7 @@
             </div>
             <label class="choice" for="resolver">
               Resolver
-              <select id="resolver"><option value="google">Google Public DNS</option><option value="cloudflare">Cloudflare 1.1.1.1</option></select>
+              <select id="resolver"><option value="google">Google Public DNS</option><option value="cloudflare">Cloudflare 1.1.1.1</option><option value="both">Compare Google and Cloudflare</option></select>
             </label>
           </form>
           <div class="samples" aria-label="Example searches">
@@ -44,7 +44,7 @@
             <button type="button" data-example="8.8.8.8">8.8.8.8</button>
             <button type="button" data-example="2606:4700:4700::1111">IPv6 example</button>
           </div>
-          <p class="privacy">On lookup, the name or address goes to the selected public resolver and the relevant RDAP service.</p>
+          <p class="privacy">On lookup, the name or address goes to the selected public resolver or resolvers and the relevant RDAP service.</p>
         </div>
       </div>
     </section>
@@ -57,6 +57,15 @@
           <div class="tools"><button id="copy" type="button">Copy report</button><button id="export" type="button">Download JSON</button></div>
         </div>
         <div id="summary" class="ledger" aria-label="Lookup summary"></div>
+        <section class="panel divergence" id="divergence" aria-labelledby="divergence-heading" hidden>
+          <div class="panel-head">
+            <h2 id="divergence-heading">Resolver comparison</h2>
+            <p id="divergence-summary" class="muted"></p>
+            <label class="difference-filter"><input id="differences-only" type="checkbox"> Show differences and unavailable replies only</label>
+          </div>
+          <div id="comparison-pairs"></div>
+          <p class="muted divergence-note">TTLs are shown separately. Cache age, resolver policy, geography, and record formatting can influence results. The DNS and mail panels below use the Google view in comparison mode.</p>
+        </section>
         <div class="results-grid">
           <section class="panel" aria-labelledby="dns-heading">
             <div class="panel-head"><h2 id="dns-heading">DNS records</h2></div>

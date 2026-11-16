@@ -176,6 +176,34 @@ export function registrationCandidates(target) {
   return candidates.length <= 6 ? candidates : [...candidates.slice(0, 5), candidates.at(-1)];
 }
 
+function recordIdentity(row) {
+  const domain = name => name.toLowerCase().replace(/\.$/, '');
+  let data = row.data.trim();
+  if ([rrTypes.CNAME, rrTypes.NS, rrTypes.PTR].includes(row.type)) {
+    data = domain(data);
+  } else if (row.type === rrTypes.MX || row.type === rrTypes.SOA) {
+    const parts = data.split(/\s+/);
+    const names = row.type === rrTypes.MX ? [1] : [0, 1];
+    for (const index of names) {
+      if (parts[index]) parts[index] = domain(parts[index]);
+    }
+    data = parts.join(' ');
+  } else if (row.type === rrTypes.AAAA) {
+    try { data = new URL('https://[' + data + ']/').hostname.slice(1, -1); } catch {}
+  }
+  return JSON.stringify([domain(row.name), row.type, data]);
+}
+
+export function compareRecordSets(first, second) {
+  if ([first, second].some(entry => !entry || entry.failed || entry.truncated
+    || ![0, 3].includes(entry.status))) return 'unavailable';
+  const left = new Set(answersFor(first).map(recordIdentity));
+  const right = new Set(answersFor(second).map(recordIdentity));
+  if (first.status !== second.status || left.size !== right.size
+    || [...left].some(item => !right.has(item))) return 'different';
+  return first.validated === second.validated ? 'same' : 'dnssec';
+}
+
 export function exportText(report) {
   const lines = ['DNS Lens report', report.target.value, report.observed, report.resolver, ''];
   for (const answer of report.dns) {
@@ -185,6 +213,14 @@ export function exportText(report) {
       const type = Object.keys(rrTypes).find(key => rrTypes[key] === row.type) ?? row.type;
       lines.push([row.name, row.TTL, type, row.data].join('\t'));
     }
+    lines.push('');
+  }
+  if (report.comparison) {
+    lines.push('Resolver comparison — ' + report.comparison.resolver);
+    report.comparison.dns.forEach((entry, index) => {
+      lines.push(entry.type + ' ' + entry.name + ' — ' + compareRecordSets(report.dns[index], entry));
+      for (const row of entry.answers) lines.push([row.name, row.TTL, row.type, row.data].join('\t'));
+    });
     lines.push('');
   }
   if (report.email) {
