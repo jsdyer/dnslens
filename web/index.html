@@ -7,7 +7,7 @@
   <meta name="description" content="Inspect public DNS, mail policies, DNSSEC signals and RDAP registration from your browser.">
   <title>DNS Lens · CoolCode</title>
   <link rel="stylesheet" href="./style.css">
-  <script type="module" src="./app.mjs"></script>
+  <script type="module" src="./app.mjs?v=mail-policy"></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to lookup</a>
@@ -37,10 +37,14 @@
               Resolver
               <select id="resolver"><option value="google">Google Public DNS</option><option value="cloudflare">Cloudflare 1.1.1.1</option><option value="both">Compare Google and Cloudflare</option></select>
             </label>
+            <label class="selectors-label" for="dkim-selectors">DKIM selectors (optional)</label>
+            <input id="dkim-selectors" class="selectors" type="text" maxlength="768" spellcheck="false" autocapitalize="none" autocomplete="off" placeholder="selector1, selector2" aria-describedby="selectors-tip">
+            <p class="selector-tip" id="selectors-tip">From a DKIM-Signature header, use d= for the domain and s= for the selector. Up to three selectors.</p>
           </form>
           <div class="samples" aria-label="Example searches">
             <button type="button" data-example="coolcode.ca">coolcode.ca</button>
             <button type="button" data-example="canada.ca">canada.ca</button>
+            <button type="button" data-example="gmail.com" data-selectors="20230601">Mail example</button>
             <button type="button" data-example="8.8.8.8">8.8.8.8</button>
             <button type="button" data-example="2606:4700:4700::1111">IPv6 example</button>
           </div>
@@ -73,8 +77,9 @@
           </section>
           <div class="side">
             <section class="panel" id="email-panel" aria-labelledby="email-heading" hidden>
-              <div class="panel-head"><h2 id="email-heading">Mail policy</h2><p class="muted">Checks at the queried domain. SPF includes and inherited DMARC policies are outside this lookup.</p></div>
+              <div class="panel-head"><h2 id="email-heading">Mail policy</h2><p class="muted">Exact-name SPF, DMARC, MTA-STS and TLS-RPT checks. DKIM checks the published key record for each supplied selector.</p></div>
               <div id="email"></div>
+              <p class="muted mail-note">DNS reports published settings. Verifying a DKIM signature requires the original message.</p>
             </section>
             <section class="panel" aria-labelledby="rdap-heading">
               <div class="panel-head"><h2 id="rdap-heading">RDAP registration</h2></div>

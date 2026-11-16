@@ -1,7 +1,7 @@
 import {
-  answersFor, compareRecordSets, emailFindings, exportText, normalizeInput, parseDns, queryTypes,
+  answersFor, compareRecordSets, dkimName, dkimSelectors, emailFindings, exportText, normalizeInput, parseDns, queryTypes,
   registrationCandidates, registryFor, resolvers, rrTypes, statusNames,
-} from './model.mjs';
+} from './model.mjs?v=mail-policy';
 
 const get = id => document.getElementById(id);
 let active;
@@ -65,12 +65,14 @@ async function queryDNS(target, resolver, signal) {
   }
 }
 
-function dnsTargets(target) {
+function dnsTargets(target, selectors) {
   if (target.kind !== 'domain') return [{ name: target.reverse, type: 'PTR' }];
   return [
     ...queryTypes.map(type => ({ name: target.value, type })),
     { name: '_dmarc.' + target.value, type: 'TXT' },
     { name: '_mta-sts.' + target.value, type: 'TXT' },
+    { name: '_smtp._tls.' + target.value, type: 'TXT' },
+    ...selectors.map(selector => ({ name: dkimName(selector, target.value), type: 'TXT' })),
   ];
 }
 
@@ -196,15 +198,18 @@ function renderEmail(data, signal) {
     ['SPF', data.email.spf, 'https://www.rfc-editor.org/rfc/rfc7208.html'],
     ['DMARC', data.email.dmarc, 'https://www.rfc-editor.org/rfc/rfc9989.html'],
     ['MTA-STS', data.email.sts, 'https://www.rfc-editor.org/rfc/rfc8461.html'],
+    ['TLS-RPT', data.email.tlsRpt, 'https://www.rfc-editor.org/rfc/rfc8460.html'],
+    ...data.email.dkim.map(finding => ['DKIM · ' + finding.selector, finding, 'https://www.rfc-editor.org/rfc/rfc6376.html']),
   ];
   get('email').replaceChildren(...fields.map(([title, finding, href]) => {
     const card = element('div', undefined, 'find');
     const h3 = element('h3', title);
     const outcome = badge(finding.summary, finding.level);
     card.append(h3, outcome);
+    for (const alias of finding.aliases ?? []) card.append(element('p', 'CNAME → ' + alias, 'muted'));
     for (const text of finding.records) card.append(element('code', text));
     const controls = element('div', undefined, 'action-row');
-    controls.append(link(title + ' standard ↗', href));
+    controls.append(link((finding.selector ? 'DKIM' : title) + ' standard ↗', href));
     if (title === 'MTA-STS' && finding.records.length) {
       const uri = new URL('https://mta-sts.' + data.target.value + '/.well-known/mta-sts.txt').href;
       const action = element('button', 'Fetch HTTPS policy');
@@ -324,6 +329,14 @@ async function runLookup(input) {
     get('host').focus();
     return;
   }
+  let selectors;
+  try {
+    selectors = dkimSelectors(get('dkim-selectors').value, target);
+  } catch (error) {
+    status(error.message, 'issue');
+    get('dkim-selectors').focus();
+    return;
+  }
   active?.abort();
   const run = new AbortController();
   active = run;
@@ -337,13 +350,13 @@ async function runLookup(input) {
   report = null;
   const observed = new Date().toISOString();
   const registration = queryRegistration(target, signal);
-  const targets = dnsTargets(target);
+  const targets = dnsTargets(target, selectors);
   const resolveAll = server => Promise.all(targets.map(query => queryDNS(query, server, signal)));
   const [dns, other] = await Promise.all([resolveAll(resolver), compare ? resolveAll(resolvers.cloudflare) : []]);
   if (signal.aborted) return;
   report = { target, observed, resolver: resolver.name, dns };
   if (compare) report.comparison = { resolver: resolvers.cloudflare.name, dns: other };
-  if (target.kind === 'domain') report.email = emailFindings(dns, target.value);
+  if (target.kind === 'domain') report.email = emailFindings(dns, target.value, selectors);
   get('report-title').textContent = target.value;
   get('provenance').textContent = source + ' · ' + new Date(observed).toLocaleString() + ' · ' + observed;
   const { answered, failures } = renderLedger(report);
@@ -374,6 +387,7 @@ get('lookup').addEventListener('submit', event => {
 for (const control of document.querySelectorAll('[data-example]')) {
   control.addEventListener('click', () => {
     get('host').value = control.dataset.example;
+    get('dkim-selectors').value = control.dataset.selectors ?? '';
     get('lookup').requestSubmit();
   });
 }

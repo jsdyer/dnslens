@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  answersFor, compareRecordSets, emailFindings, ipMatches, normalizeInput, parseDns, parseTxt, registrationCandidates, registryFor,
+  answersFor, compareRecordSets, dkimName, dkimSelectors, emailFindings, exportText, ipMatches, normalizeInput, parseDns, parseTxt, registrationCandidates, registryFor,
 } from '../web/model.mjs';
 
 test('canonicalizes IDN and produces IPv4 and IPv6 reverse lookup names', () => {
@@ -72,4 +72,62 @@ test('resolver comparisons ignore order and TTL, but expose answer, status and A
   for (const unavailable of [{ status: 2 }, { truncated: true }, { failed: 'Timeout' }]) {
     assert.equal(compareRecordSets(google, { ...cloudflare, ...unavailable }), 'unavailable');
   }
+});
+
+test('normalizes and bounds exact DKIM selector queries', () => {
+  const target = normalizeInput('Café.ca');
+  const selectors = dkimSelectors(' Selector1, MAIL.2026 selector1 ', target);
+  assert.deepEqual(selectors, ['selector1', 'mail.2026']);
+  assert.equal(dkimName(selectors[0], target.value), 'selector1._domainkey.xn--caf-dma.ca');
+  for (const invalid of ['a.,', 'a/b', 'a@b', '_key', '-x', 'a..b', 'a b c d', 'a'.repeat(64)]) {
+    assert.throws(() => dkimSelectors(invalid, target));
+  }
+  assert.deepEqual(dkimSelectors('', normalizeInput('8.8.8.8')), []);
+  assert.throws(() => dkimSelectors('a', normalizeInput('8.8.8.8')), /domain name/);
+});
+
+test('scoped mail policies distinguish published keys, revoked keys, delegation, and failed queries', () => {
+  const domain = 'example.ca';
+  const key = (selector, text, options = {}) => {
+    const name = dkimName(selector, domain);
+    return parseDns({
+      Status: 0, ...options,
+      Answer: [
+        { name, type: 5, TTL: 200, data: 'customer.keys.example.net.' },
+        ...(text === undefined ? [] : [{ name: 'customer.keys.example.net.', type: 16, TTL: 200, data: text }]),
+      ],
+    }, { name, type: 'TXT' });
+  };
+  const tls = (data, extra = {}) => parseDns({
+    Status: 0, ...extra, Answer: [{ name: '_smtp._tls.example.ca.', type: 16, TTL: 90, data }],
+  }, { name: '_smtp._tls.example.ca', type: 'TXT' });
+
+  const selectors = ['current', 'retired', 'bad', 'duplicate', 'failed', 'missing', 'newkey'];
+  const lookups = [
+    key('current', '"v=DKIM1; p=QUJD" "RA=="'),
+    key('retired', 'v=DKIM1; k=rsa; p='),
+    key('bad', 'v=DKIM1; p=hey!'),
+    key('duplicate', 'v=DKIM1; p=QUJD; p=QUJD'),
+    key('failed', 'v=DKIM1; p=QUJD', { TC: true }),
+    key('missing', undefined, { Status: 3 }),
+    key('newkey', 'k=ed25519; p=QUJD'),
+    tls('v=TLSRPTv1; rua=mailto:tls@example.net, https://reports.example.net/intake'),
+  ];
+  const report = emailFindings(lookups, domain, selectors);
+  assert.equal(report.tlsRpt.summary, '2 report destinations published');
+  assert.deepEqual(report.dkim.map(finding => [finding.level, finding.summary]), [
+    ['ok', 'RSA key record published'],
+    ['warn', 'Revoked key (empty p=)'],
+    ['warn', 'Public-key text is not valid Base64'],
+    ['warn', 'Repeated tags in the key record'],
+    ['issue', 'Lookup unavailable'],
+    ['quiet', 'No matching TXT returned'],
+    ['ok', 'Ed25519 key record published'],
+  ]);
+  assert.deepEqual(report.dkim[0].aliases, ['customer.keys.example.net.']);
+  assert.equal(emailFindings([tls('v=TLSRPTv1; rua=https:maybe')], domain).tlsRpt.level, 'warn');
+  assert.equal(emailFindings([tls('v=TLSRPTv1; rua=mailto:tls@example.net', { Status: 2 })], domain).tlsRpt.level, 'issue');
+  const exported = exportText({ target: { value: domain }, observed: 'test', resolver: 'test', dns: lookups, email: report });
+  assert.match(exported, /DKIM retired — Revoked key/);
+  assert.match(exported, /TLS-RPT — 2 report destinations published/);
 });

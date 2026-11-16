@@ -90,19 +90,74 @@ export function answersFor(section) {
 
 function resultFor(section, pattern) {
   const records = answersFor(section).map(answer => parseTxt(answer.data)).filter(value => pattern.test(value));
-  if (!section || section.failed || ![0, 3].includes(section.status)) return { level: 'issue', summary: 'Lookup unavailable', records };
+  if (!section || section.failed || section.truncated || ![0, 3].includes(section.status)) return { level: 'issue', summary: 'Lookup unavailable', records };
   if (records.length > 1) return { level: 'warn', summary: 'Multiple records', records };
   if (records.length === 0) return { level: 'quiet', summary: 'No matching TXT returned', records };
   return { level: 'ok', summary: 'Record published', records };
 }
 
-function tagValues(text) {
-  return new Map(text.split(';').map(item => item.trim().split(/\s*=\s*(.*)/s).slice(0, 2)).filter(pair => pair.length === 2));
+function tagPairs(text) {
+  return text.split(';').map(item => item.trim().match(/^([a-z][a-z0-9_]*)\s*=\s*(.*)$/is))
+    .filter(Boolean).map(match => [match[1], match[2]]);
 }
 
-export function emailFindings(sections, target) {
+const tagValues = text => new Map(tagPairs(text));
+
+export function dkimSelectors(raw, target) {
+  const selectors = [...new Set(String(raw).trim().toLowerCase().split(/[\s,]+/).filter(Boolean))];
+  if (!selectors.length) return selectors;
+  if (target.kind !== 'domain') throw new Error('DKIM selectors require a domain name.');
+  if (selectors.length > 3) throw new Error('Enter up to three DKIM selectors.');
+  for (const selector of selectors) {
+    if (dkimName(selector, target.value).length > 253 || selector.split('.').some(label =>
+      !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) {
+      throw new Error('Enter a DKIM selector such as selector1, google or mail.2026.');
+    }
+  }
+  return selectors;
+}
+
+export const dkimName = (selector, domain) => selector + '._domainkey.' + domain;
+
+function describeDkim(section, selector) {
+  const finding = resultFor(section, /(?:^|;)\s*(?:v\s*=\s*DKIM1(?:\s*;|$)|p\s*=)/);
+  const aliases = [...new Set((section?.answers ?? []).filter(answer => answer.type === rrTypes.CNAME).map(answer => answer.data))];
+  const result = { ...finding, selector, aliases };
+  if (finding.level !== 'ok') return result;
+  const tags = tagPairs(finding.records[0]);
+  const values = new Map(tags);
+  const warn = summary => ({ ...result, level: 'warn', summary });
+  if (values.size !== tags.length) return warn('Repeated tags in the key record');
+  if (values.has('v') && (values.get('v') !== 'DKIM1' || tags[0][0] !== 'v')) return warn('Unrecognized or misplaced version tag');
+  const key = values.get('p');
+  if (key === undefined) return warn('Public-key p= tag missing');
+  if (!key.trim()) return warn('Revoked key (empty p=)');
+  try { atob(key.replace(/[ \t\r\n]/g, '')); }
+  catch { return warn('Public-key text is not valid Base64'); }
+  const kind = values.get('k') ?? 'rsa';
+  if (kind !== 'rsa' && kind !== 'ed25519') return warn('Unrecognized key type: ' + kind);
+  return { ...result, summary: (kind === 'rsa' ? 'RSA' : 'Ed25519') + ' key record published' };
+}
+
+function describeTlsReporting(section) {
+  const finding = resultFor(section, /^v=TLSRPTv1(?:\s*;|$)/);
+  if (finding.level !== 'ok') return finding;
+  const raw = tagValues(finding.records[0]).get('rua') ?? '';
+  const locations = raw.split(',').map(value => value.trim()).filter(Boolean);
+  const supported = locations.filter(value => {
+    try {
+      const url = new URL(value);
+      return (/^https:\/\/\S+$/i.test(value) && url.hostname && !url.username && !url.password)
+        || (/^mailto:\S+$/i.test(value) && url.pathname.includes('@'));
+    } catch { return false; }
+  });
+  if (!supported.length) return { ...finding, level: 'warn', summary: 'No recognizable HTTPS or mailto report destination' };
+  return { ...finding, summary: supported.length + (supported.length === 1 ? ' report destination' : ' report destinations') + ' published' };
+}
+
+export function emailFindings(sections, target, selectors = []) {
   const spf = resultFor(sections.find(item => item.type === 'TXT' && sameName(item.name, target)), /^v=spf1(?:\s|$)/i);
-  if (spf.records.length === 1) {
+  if (spf.level === 'ok') {
     const modifiers = spf.records[0].split(/\s+/);
     const all = modifiers.find(item => /^[+?~-]?all$/i.test(item));
     const label = { '-all': 'Fail for other senders', '~all': 'Softfail for other senders', '?all': 'Neutral for other senders' }[all?.toLowerCase()];
@@ -110,17 +165,19 @@ export function emailFindings(sections, target) {
     else if (label) spf.summary = label;
   }
   const dmarc = resultFor(sections.find(item => sameName(item.name, '_dmarc.' + target)), /^v=DMARC1(?:\s*;|$)/i);
-  if (dmarc.records.length === 1) {
+  if (dmarc.level === 'ok') {
     const policy = tagValues(dmarc.records[0]).get('p');
     if (['none', 'quarantine', 'reject'].includes(policy)) dmarc.summary = 'Published policy: ' + policy;
     else Object.assign(dmarc, { level: 'warn', summary: 'Published record lacks a recognized p= policy' });
   }
   const sts = resultFor(sections.find(item => sameName(item.name, '_mta-sts.' + target)), /^v=STSv1(?:\s*;|$)/);
-  if (sts.records.length === 1) {
+  if (sts.level === 'ok') {
     if (tagValues(sts.records[0]).get('id')) sts.summary = 'DNS policy ID published';
     else Object.assign(sts, { level: 'warn', summary: 'Published record lacks an id= tag' });
   }
-  return { spf, dmarc, sts };
+  const tlsRpt = describeTlsReporting(sections.find(item => sameName(item.name, '_smtp._tls.' + target)));
+  const dkim = selectors.map(selector => describeDkim(sections.find(item => sameName(item.name, dkimName(selector, target))), selector));
+  return { spf, dmarc, sts, tlsRpt, dkim };
 }
 
 export function parseDns(payload, target) {
@@ -224,7 +281,11 @@ export function exportText(report) {
     lines.push('');
   }
   if (report.email) {
-    for (const [name, finding] of Object.entries(report.email)) lines.push(name.toUpperCase() + ' — ' + finding.summary);
+    const { dkim = [], ...policies } = report.email;
+    for (const [name, finding] of Object.entries(policies)) {
+      lines.push((name === 'tlsRpt' ? 'TLS-RPT' : name.toUpperCase()) + ' — ' + finding.summary);
+    }
+    for (const finding of dkim) lines.push('DKIM ' + finding.selector + ' — ' + finding.summary);
   }
   if (report.rdap) {
     lines.push('', 'RDAP — ' + report.rdap.summary);
