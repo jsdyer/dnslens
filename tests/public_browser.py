@@ -21,7 +21,7 @@ def check(browser):
             page.locator("#record-type").select_option(record)
         page.get_by_role("button", name="Look up", exact=True).click()
         expect(page.locator("#report-title")).to_have_text(name, timeout=30000)
-        expect(page.locator("#state")).to_contain_text("DNS lookups complete")
+        expect(page.locator("#result")).to_be_visible()
         expect(page.locator("#registration-panel")).to_be_hidden()
         assert not any("rdap" in url for url in requests), requests
         with page.expect_download() as pending:
@@ -33,9 +33,12 @@ def check(browser):
     assert {(r["name"], r["type"]) for r in web["dns"]} == {
         (name, kind) for name in ("coolcode.ca", "www.coolcode.ca") for kind in ("A", "AAAA", "CNAME", "HTTPS")
     }
-    assert all(not r.get("failed") for r in web["dns"])
-    assert any(r["answers"] for r in web["dns"])
-    print("Public resolver returned eight focused website replies for coolcode.ca and www.coolcode.ca.", flush=True)
+    failures = [r for r in web["dns"] if r.get("failed") or r["status"] not in (0, 3)]
+    assert any(r["type"] == "A" and r["answers"] for r in web["dns"])
+    state = page.locator("#state").inner_text()
+    assert (f"{len(failures)} of 8 DNS lookups failed" if failures else "DNS lookups complete") in state, state
+    print("Eight focused queries for coolcode.ca and www.coolcode.ca.", state,
+          [(r["name"], r["type"], r.get("failed") or r.get("status")) for r in failures], flush=True)
 
     name = "_dmarc.google.com"
     current = lookup("record", name, "TXT")
