@@ -5,7 +5,7 @@ export const resolvers = {
 
 export const rrTypes = {
   A: 1, NS: 2, CNAME: 5, SOA: 6, PTR: 12, MX: 15, TXT: 16, AAAA: 28,
-  DS: 43, RRSIG: 46, DNSKEY: 48, HTTPS: 65, CAA: 257,
+  SRV: 33, NAPTR: 35, DS: 43, SSHFP: 44, TLSA: 52, SVCB: 64, RRSIG: 46, DNSKEY: 48, HTTPS: 65, CAA: 257,
 };
 
 export const statusNames = {
@@ -33,7 +33,7 @@ function expandIPv6(text) {
   return [...before, ...fill, ...after].map(part => part.padStart(4, '0')).join('');
 }
 
-export function normalizeInput(raw) {
+export function normalizeInput(raw, allowServiceLabels = false) {
   const name = raw.trim().replace(/\.$/, '');
   if (!name || name.length > 512 || /[\s/%\\@?#]/u.test(name)) {
     throw new Error('Enter a domain name or public IP address.');
@@ -64,7 +64,7 @@ export function normalizeInput(raw) {
     const hostname = new URL('https://' + name).hostname.toLowerCase().replace(/\.$/, '');
     const labels = hostname.split('.');
     if (hostname.length > 253 || labels.length < 2 || /^\d+$/.test(labels.at(-1))
-        || labels.some(label => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) {
+        || labels.some(label => !(allowServiceLabels && /^_[a-z0-9](?:[a-z0-9-]{0,60}[a-z0-9])?$/.test(label)) && !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) {
       throw new Error('Invalid DNS name.');
     }
     return { kind: 'domain', value: hostname };
@@ -293,4 +293,55 @@ export function exportText(report) {
     for (const row of report.rdap.fields ?? []) lines.push(row.join(': '));
   }
   return lines.join('\n');
+}
+
+export function lookupTargets(target, mode, type, selectors) {
+  if (target.kind !== 'domain') return [{name:target.reverse,type:'PTR'}];
+  const domain = target.value;
+  const records = (name, types) => types.map(type => ({name,type}));
+  if (mode === 'record') return records(domain,[type]);
+  if (mode === 'web') {
+    const base = domain.startsWith('www.') ? domain.slice(4) : domain;
+    return [base, 'www.'+base].flatMap(name=>records(name,['A','AAAA','CNAME','HTTPS']));
+  }
+  if (mode === 'delegation') return records(domain,['NS','SOA','DS','DNSKEY','CAA']);
+  return [
+    ...records(domain,mode === 'mail' ? ['MX','TXT'] : queryTypes),
+    ...['_dmarc.','_mta-sts.','_smtp._tls.'].map(prefix=>({name:prefix+domain,type:'TXT'})),
+    ...selectors.map(selector=>({name:dkimName(selector,domain),type:'TXT'})),
+  ];
+}
+
+export function snapshotChanges(prior, current) {
+  if (!prior || !Array.isArray(prior.dns) || !prior.dns.length || prior.dns.length > 100 ||
+      !Number.isFinite(Date.parse(prior.observed)) || !current) throw new Error('Choose a JSON report downloaded from DNS Lens.');
+  if (prior.target?.value !== current.target.value) throw new Error('These reports concern different names or addresses.');
+  // Reports made in two-resolver mode retain a distinct set of replies for each resolver.
+  const older = [prior,prior.comparison].find(view => view?.resolver === current.resolver);
+  if (!older) throw new Error('Run the lookup with the same resolver as the saved report.');
+  if (!Array.isArray(older.dns) || older.dns.length > 100) throw new Error('The saved DNS records are unreadable.');
+  const key = entry => entry.name.toLowerCase().replace(/\.$/,'')+' '+entry.type;
+  const before = new Map();
+  for (const entry of older.dns) {
+    if (!entry || typeof entry.name !== 'string' || !Object.hasOwn(rrTypes,entry.type) || !Array.isArray(entry.answers)
+        || entry.answers.some(row=>!row || typeof row.name !== 'string' || typeof row.data !== 'string' || !Number.isInteger(row.type))) {
+      throw new Error('The file contains an unreadable DNS answer.');
+    }
+    before.set(key(entry),entry);
+  }
+  const after = new Map(current.dns.map(entry=>[key(entry),entry]));
+  const identities = entry => new Map(entry.answers.filter(row=>row.type===rrTypes[entry.type] || row.type===rrTypes.CNAME)
+    .map(row=>[recordIdentity(row),row.name+' '+(Object.keys(rrTypes).find(k=>rrTypes[k]===row.type)||row.type)+' '+row.data]));
+  return [...new Set([...after.keys(),...before.keys()])].map(name=>{
+    const old = before.get(name), fresh = after.get(name);
+    if (!old || !fresh) return {name,state:'Only queried in one report'};
+    if (compareRecordSets(old,fresh)==='unavailable') return {name,state:'Unavailable in one or both reports'};
+    const a=identities(old), b=identities(fresh);
+    const removed=[...a].filter(([k])=>!b.has(k)).map(([,value])=>value);
+    const added=[...b].filter(([k])=>!a.has(k)).map(([,value])=>value);
+    const notes=[];
+    if (old.status!==fresh.status) notes.push((statusNames[old.status]??old.status)+' → '+(statusNames[fresh.status]??fresh.status));
+    if (old.validated!==fresh.validated) notes.push('DNSSEC AD '+(fresh.validated?'set':'cleared'));
+    return {name,state:removed.length||added.length||notes.length?'Changed':'Unchanged',removed,added,notes};
+  });
 }

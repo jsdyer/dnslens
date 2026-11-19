@@ -131,3 +131,31 @@ test('scoped mail policies distinguish published keys, revoked keys, delegation,
   assert.match(exported, /DKIM retired — Revoked key/);
   assert.match(exported, /TLS-RPT — 2 report destinations published/);
 });
+
+test('focused lookups allow exact service owner names and avoid unrelated queries',async()=>{
+  const {lookupTargets} = await import('../web/model.mjs');
+  const srv = normalizeInput('_sip._tcp.example.ca',true);
+  assert.throws(()=>normalizeInput(srv.value));
+  assert.deepEqual(lookupTargets(srv,'record','SRV',[]),[{name:srv.value,type:'SRV'}]);
+  assert.deepEqual([...new Set(lookupTargets(normalizeInput('www.example.ca'),'web','A',[]).map(x=>x.name))],['example.ca','www.example.ca']);
+  assert.equal(lookupTargets(normalizeInput('8.8.8.8'),'record','A',[])[0].type,'PTR');
+  assert.ok(lookupTargets(normalizeInput('example.ca'),'mail','A',['key']).find(x=>x.name==='key._domainkey.example.ca'));
+});
+
+test('snapshots match queries by name and type and distinguish changed aliases, absent queries and failures',async()=>{
+  const {snapshotChanges} = await import('../web/model.mjs');
+  const make=(alias,ttl)=>({name:'example.ca',type:'A',status:0,validated:false,answers:[
+    {name:'example.ca.',type:5,TTL:ttl,data:alias},{name:'same.example.',type:1,TTL:ttl,data:'192.0.2.1'}]});
+  const snapshot=dns=>({observed:'2024-03-01T12:00:00Z',resolver:'Cloudflare',target:{value:'example.ca'},dns});
+  const old=snapshot([make('old.example.',50)]);
+  assert.equal(snapshotChanges(old,snapshot([make('OLD.example',5)]))[0].state,'Unchanged');
+  const news=snapshot([make('new.example.',25),{...make('x',5),type:'AAAA'}]);
+  const [change,extra]=snapshotChanges(old,news);
+  assert.equal(change.state,'Changed');
+  assert.match(change.removed[0],/old.example/);
+  assert.match(change.added[0],/new.example/);
+  assert.equal(extra.state,'Only queried in one report');
+  assert.match(snapshotChanges(old,snapshot([{...make('x',5),status:2}]))[0].state,/Unavailable/);
+  assert.throws(()=>snapshotChanges({...old,target:{value:'other'}},news),/different/);
+  assert.throws(()=>snapshotChanges({...old,resolver:'Google'},news),/same resolver/);
+});

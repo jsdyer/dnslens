@@ -1,7 +1,7 @@
 import {
-  answersFor, compareRecordSets, dkimName, dkimSelectors, emailFindings, exportText, normalizeInput, parseDns, queryTypes,
+  answersFor, compareRecordSets, lookupTargets, snapshotChanges, dkimSelectors, emailFindings, exportText, normalizeInput, parseDns, 
   registrationCandidates, registryFor, resolvers, rrTypes, statusNames,
-} from './model.mjs?v=mail-policy';
+} from './model.mjs?v=workbench';
 
 const get = id => document.getElementById(id);
 let active;
@@ -63,17 +63,6 @@ async function queryDNS(target, resolver, signal) {
   } catch (error) {
     return { ...target, source: url.href, elapsed: elapsed(), failed: reachability(error), answers: [] };
   }
-}
-
-function dnsTargets(target, selectors) {
-  if (target.kind !== 'domain') return [{ name: target.reverse, type: 'PTR' }];
-  return [
-    ...queryTypes.map(type => ({ name: target.value, type })),
-    { name: '_dmarc.' + target.value, type: 'TXT' },
-    { name: '_mta-sts.' + target.value, type: 'TXT' },
-    { name: '_smtp._tls.' + target.value, type: 'TXT' },
-    ...selectors.map(selector => ({ name: dkimName(selector, target.value), type: 'TXT' })),
-  ];
 }
 
 function dnsState(entry) {
@@ -321,9 +310,10 @@ function renderRDAP(data) {
 }
 
 async function runLookup(input) {
+  const mode = get('mode').value;
   let target;
   try {
-    target = normalizeInput(input);
+    target = normalizeInput(input, mode === 'record');
   } catch (error) {
     status(error.message, 'issue');
     get('host').focus();
@@ -331,7 +321,7 @@ async function runLookup(input) {
   }
   let selectors;
   try {
-    selectors = dkimSelectors(get('dkim-selectors').value, target);
+    selectors = ['full','mail'].includes(mode) ? dkimSelectors(get('dkim-selectors').value, target) : [];
   } catch (error) {
     status(error.message, 'issue');
     get('dkim-selectors').focus();
@@ -349,14 +339,19 @@ async function runLookup(input) {
   get('result').hidden = true;
   report = null;
   const observed = new Date().toISOString();
-  const registration = queryRegistration(target, signal);
-  const targets = dnsTargets(target, selectors);
+  const includeRegistration = mode === 'full' || mode === 'delegation' || (target.kind !== 'domain' && mode !== 'record');
+  const registration = includeRegistration ? queryRegistration(target,signal) : null;
+  const targets = lookupTargets(target,mode,get('record-type').value,selectors);
+  get('registration-panel').hidden = !includeRegistration;
+  get('baseline').value = '';
+  get('diff-state').textContent = '';
+  get('diff-rows').replaceChildren();
   const resolveAll = server => Promise.all(targets.map(query => queryDNS(query, server, signal)));
   const [dns, other] = await Promise.all([resolveAll(resolver), compare ? resolveAll(resolvers.cloudflare) : []]);
   if (signal.aborted) return;
   report = { target, observed, resolver: resolver.name, dns };
   if (compare) report.comparison = { resolver: resolvers.cloudflare.name, dns: other };
-  if (target.kind === 'domain') report.email = emailFindings(dns, target.value, selectors);
+  if (target.kind === 'domain' && ['mail','full'].includes(mode)) report.email = emailFindings(dns, target.value, selectors);
   get('report-title').textContent = target.value;
   get('provenance').textContent = source + ' · ' + new Date(observed).toLocaleString() + ' · ' + observed;
   const { answered, failures } = renderLedger(report);
@@ -369,7 +364,8 @@ async function runLookup(input) {
     compare ? 'Resolver comparison complete. '
       : failures ? failures + ' of ' + dns.length + ' DNS lookups failed. '
       : answered.length ? 'DNS lookups complete. ' : 'No requested DNS records were returned. '
-  ) + 'Registration lookup runs separately.');
+  ) + (includeRegistration ? 'Registration lookup runs separately.' : ''));
+  if (!includeRegistration) return;
   const current = await registration;
   if (signal.aborted) return;
   report.rdap = current;
@@ -386,6 +382,8 @@ get('lookup').addEventListener('submit', event => {
 
 for (const control of document.querySelectorAll('[data-example]')) {
   control.addEventListener('click', () => {
+    get('mode').value = control.dataset.selectors ? 'mail' : 'full';
+    showInputs();
     get('host').value = control.dataset.example;
     get('dkim-selectors').value = control.dataset.selectors ?? '';
     get('lookup').requestSubmit();
@@ -421,4 +419,40 @@ get('theme').addEventListener('click', () => {
   const dark = document.documentElement.dataset.theme !== 'dark';
   setTheme(dark);
   try { localStorage.setItem('coolcode-dnslens-theme', dark ? 'dark' : 'light'); } catch {}
+});
+
+for (const type of Object.keys(rrTypes)) get('record-type').append(new Option(type,type));
+function showInputs() {
+  const mode = get('mode').value;
+  get('record-choice').hidden = mode !== 'record';
+  get('selector-box').hidden = !['full','mail'].includes(mode);
+}
+get('mode').addEventListener('change',showInputs);
+showInputs();
+get('baseline').addEventListener('change', async () => {
+  const file = get('baseline').files[0];
+  const current = report;
+  const output = get('diff-state'), list = get('diff-rows');
+  list.replaceChildren();
+  output.textContent = '';
+  if (!file || !current) return;
+  try {
+    if (file.size > 2000000) throw new Error('Choose a DNS Lens report smaller than 2 MB.');
+    const prior = JSON.parse(await file.text());
+    if (current !== report || file !== get('baseline').files[0]) return;
+    const rows = snapshotChanges(prior,current);
+    const changed = rows.filter(r=>r.state === 'Changed').length;
+    const same = rows.filter(r=>r.state === 'Unchanged').length;
+    output.textContent = prior.observed+' → '+current.observed+' · '+current.resolver+' · '+changed+' changed, '+same+' unchanged, '+(rows.length-same-changed)+' unavailable or queried only once. TTL countdown and record order are ignored.';
+    for (const row of rows.filter(row=>row.state !== 'Unchanged')) {
+      const block = element('section',undefined,'find');
+      block.append(element('h3',row.name+' · '+row.state));
+      for (const text of row.notes??[]) block.append(element('p',text));
+      for (const text of row.removed??[]) block.append(element('code','Removed · '+text));
+      for (const text of row.added??[]) block.append(element('code','Added · '+text));
+      list.append(block);
+    }
+  } catch (error) {
+    if (current === report && file === get('baseline').files[0]) output.textContent = error instanceof SyntaxError ? 'Choose a valid DNS Lens JSON file.' : error.message;
+  }
 });

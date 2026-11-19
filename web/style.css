@@ -144,3 +144,10 @@ footer { border-top: 1px solid var(--line); }
 @media (max-width: 600px) { .resolver-pair { grid-template-columns: 1fr; } }
 
 .mail-note { padding: .65rem .9rem; border-top: 1px solid var(--line); }
+
+.terminal .choice { margin-bottom: .65rem; flex-wrap: wrap; }
+.terminal select { max-width: 100%; }
+.snapshot { margin-bottom: 1rem; }
+.snapshot label, #diff-state { display: block; margin-top: .75rem; }
+.snapshot input { max-width: 100%; }
+#diff-rows .find { padding-inline: 0; }

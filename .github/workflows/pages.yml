@@ -21,6 +21,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/configure-pages@v5
+      - name: Test DNS lookups and report comparisons
+        run: node --test tests/model.test.mjs
       - name: Build the static application
         run: |
           if test -f requirements.txt; then

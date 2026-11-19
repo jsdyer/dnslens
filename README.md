@@ -11,7 +11,7 @@
 - RDAP follows IANA's HTTPS bootstrap records, selects the longest service match for IP addresses and checks parent names after registry 404 responses. Registration coverage, redaction and cross-origin browser access vary. A registry object is distinct from the current web host or actual origin network.
 - Copy individual records, copy the report as plain text, or download a JSON record containing the query timestamp, response statuses, registration fields and direct upstream sources.
 
-The app only sends lookups after an explicit search. The address or name goes to the chosen recursive resolver and the appropriate registration service. An optional MTA-STS request goes to the target's policy host. There is no lookup history or app server. Only the theme setting is saved locally.
+The app only sends lookups after an explicit search. The address or name goes to the chosen recursive resolver and the appropriate registration service. An optional MTA-STS request goes to the target's policy host. There is no automatic lookup history or app server. Only the theme setting is saved locally.
 
 ## Build and test
 
@@ -30,3 +30,13 @@ The resolver menu includes a side-by-side Google and Cloudflare comparison. Reco
 
 - [DKIM RFC 6376](https://www.rfc-editor.org/rfc/rfc6376.html)
 - [SMTP TLS Reporting RFC 8460](https://www.rfc-editor.org/rfc/rfc8460.html)
+
+## Website, mail and changes over time
+
+Choose Website and www to look up IPv4, IPv6, aliases and HTTPS service records for both names. Mail setup focuses on delivery and authentication. Nameservers and signing returns NS, SOA, DS, DNSKEY and CAA at the exact input name, with registry information. One record at an exact name accepts service labels such as _dmarc and _sip._tcp and supports TXT, SRV, TLSA, SSHFP, SVCB and other types. IP addresses use the appropriate reverse PTR name.
+
+<!-- coolcode:guide -->
+Download a DNS report before changing a domain, repeat the lookup afterwards and open the earlier JSON to see which answers changed at the same resolver.
+<!-- /coolcode:guide -->
+
+The comparison checks matching query names and types, shows added and removed answers and aliases, and reports DNS response code and AD flag changes. TTL countdowns and record order are excluded. A missing query or failed request has its own state. Saved files are read locally.

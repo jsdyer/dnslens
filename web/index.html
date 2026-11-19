@@ -7,7 +7,7 @@
   <meta name="description" content="Inspect public DNS, mail policies, DNSSEC signals and RDAP registration from your browser.">
   <title>DNS Lens · CoolCode</title>
   <link rel="stylesheet" href="./style.css">
-  <script type="module" src="./app.mjs?v=mail-policy"></script>
+  <script type="module" src="./app.mjs?v=workbench"></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to lookup</a>
@@ -24,10 +24,14 @@
         <div>
           <p class="context">Network diagnostics</p>
           <h1>DNS <em>Lens</em></h1>
-          <p class="intro">Inspect what a public resolver sees. Compare public resolvers or check DNS records, mail policies, DNSSEC signals and registration.</p>
+          <p class="intro">Check where a website points, how a domain receives mail and what changed since your last DNS report.</p>
         </div>
         <div class="terminal">
           <form id="lookup">
+            <label class="choice" for="mode">Lookup
+              <select id="mode"><option value="full">Full report</option><option value="web">Website and www</option><option value="mail">Mail setup</option><option value="delegation">Nameservers and signing</option><option value="record">One record at an exact name</option></select>
+            </label>
+            <label class="choice" id="record-choice" hidden>Record type <select id="record-type"></select></label>
             <label for="host">Domain or IP address</label>
             <div class="input-line">
               <input id="host" type="text" inputmode="url" maxlength="512" autocapitalize="none" spellcheck="false" placeholder="coolcode.ca" required>
@@ -37,9 +41,9 @@
               Resolver
               <select id="resolver"><option value="google">Google Public DNS</option><option value="cloudflare">Cloudflare 1.1.1.1</option><option value="both">Compare Google and Cloudflare</option></select>
             </label>
-            <label class="selectors-label" for="dkim-selectors">DKIM selectors (optional)</label>
+            <div id="selector-box"><label class="selectors-label" for="dkim-selectors">DKIM selectors (optional)</label>
             <input id="dkim-selectors" class="selectors" type="text" maxlength="768" spellcheck="false" autocapitalize="none" autocomplete="off" placeholder="selector1, selector2" aria-describedby="selectors-tip">
-            <p class="selector-tip" id="selectors-tip">From a DKIM-Signature header, use d= for the domain and s= for the selector. Up to three selectors.</p>
+            <p class="selector-tip" id="selectors-tip">From a DKIM-Signature header, use d= for the domain and s= for the selector. Up to three selectors.</p></div>
           </form>
           <div class="samples" aria-label="Example searches">
             <button type="button" data-example="coolcode.ca">coolcode.ca</button>
@@ -60,6 +64,10 @@
           <div><h2 id="report-title"></h2><p id="provenance" class="muted"></p></div>
           <div class="tools"><button id="copy" type="button">Copy report</button><button id="export" type="button">Download JSON</button></div>
         </div>
+        <details id="snapshot" class="panel snapshot"><summary>Compare with a saved DNS report</summary>
+          <div class="dns-body"><p>Open an earlier DNS Lens JSON for the same name and resolver. See added and removed answers, changes in DNS response codes and changes in the DNSSEC AD flag. The file stays in this tab.</p>
+          <label>Earlier JSON report <input type="file" id="baseline" accept=".json,application/json"></label>
+          <p role="status" id="diff-state"></p><div id="diff-rows"></div></div></details>
         <div id="summary" class="ledger" aria-label="Lookup summary"></div>
         <section class="panel divergence" id="divergence" aria-labelledby="divergence-heading" hidden>
           <div class="panel-head">
@@ -81,7 +89,7 @@
               <div id="email"></div>
               <p class="muted mail-note">DNS reports published settings. Verifying a DKIM signature requires the original message.</p>
             </section>
-            <section class="panel" aria-labelledby="rdap-heading">
+            <section id="registration-panel" class="panel" aria-labelledby="rdap-heading">
               <div class="panel-head"><h2 id="rdap-heading">RDAP registration</h2></div>
               <div id="rdap"></div>
             </section>
