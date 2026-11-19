@@ -1,0 +1,23 @@
+{
+  "id": "dnslens",
+  "title": "DNS Lens",
+  "description": "Look up website, mail and exact-name DNS records, compare resolvers and compare saved reports.",
+  "category": "liminal-tools",
+  "tags": [
+    "spf",
+    "dmarc",
+    "dnssec",
+    "rdap",
+    "mta-sts",
+    "mail"
+  ],
+  "icon": "scan-search",
+  "url": "/dnslens/",
+  "source": "https://github.com/jsdyer/dnslens",
+  "hosting": "project",
+  "access": "browser",
+  "data_info": {
+    "mode": "live",
+    "detail": "Choose Google or Cloudflare for current DNS replies. Full reports include registration data, and saved JSON comparisons run in your browser."
+  }
+}
