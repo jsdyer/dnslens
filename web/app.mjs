@@ -1,3 +1,4 @@
+import { readMigrated } from './storage.mjs';
 import {
   answersFor, compareRecordSets, lookupTargets, snapshotChanges, dkimSelectors, emailFindings, exportText, normalizeInput, parseDns, 
   registrationCandidates, registryFor, resolvers, rrTypes, statusNames,
@@ -413,12 +414,12 @@ function setTheme(dark) {
   get('theme').setAttribute('aria-pressed', String(dark));
 }
 let preferred = null;
-try { preferred = localStorage.getItem('coolcode-dnslens-theme'); } catch {}
+try { preferred = readMigrated(localStorage, 'coolcode:dnslens:theme', 'coolcode-dnslens-theme'); } catch {}
 setTheme(preferred === 'dark' || (preferred === null && matchMedia('(prefers-color-scheme: dark)').matches));
 get('theme').addEventListener('click', () => {
   const dark = document.documentElement.dataset.theme !== 'dark';
   setTheme(dark);
-  try { localStorage.setItem('coolcode-dnslens-theme', dark ? 'dark' : 'light'); } catch {}
+  try { localStorage.setItem('coolcode:dnslens:theme', dark ? 'dark' : 'light'); } catch {}
 });
 
 for (const type of Object.keys(rrTypes)) get('record-type').append(new Option(type,type));

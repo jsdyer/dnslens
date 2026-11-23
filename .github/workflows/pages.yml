@@ -22,7 +22,7 @@ jobs:
           persist-credentials: false
       - uses: actions/configure-pages@v5
       - name: Test DNS lookups and report comparisons
-        run: node --test tests/model.test.mjs
+        run: node --test tests/*.test.mjs
       - name: Build the static application
         run: |
           if test -f requirements.txt; then
@@ -32,7 +32,7 @@ jobs:
           fi
           python3 scripts/build.py
           test -s dist/index.html
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
@@ -49,4 +49,4 @@ jobs:
     steps:
       - name: Publish GitHub Pages
         id: publish
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

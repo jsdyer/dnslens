@@ -40,3 +40,7 @@ Download a DNS report before changing a domain, repeat the lookup afterwards and
 <!-- /coolcode:guide -->
 
 The comparison checks matching query names and types, shows added and removed answers and aliases, and reports DNS response code and AD flag changes. TTL countdowns and record order are excluded. A missing query or failed request has its own state. Saved files are read locally.
+
+## Saved preference compatibility
+
+The theme preference uses coolcode:dnslens:theme. An existing coolcode-dnslens-theme preference is copied on first use; if storage is unavailable, the original preference is retained.
