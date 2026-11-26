@@ -23,8 +23,8 @@
     <section class="hero">
       <div class="wrap hero-grid">
         <div>
-          <p class="context">Network diagnostics</p>
-          <h1>DNS <em>Lens</em></h1>
+          <p class="context">DNS Lens</p>
+          <h1>DNS &amp; email record checker</h1><!-- example-intro -->
           <p class="intro">Check where a website points, how a domain receives mail and what changed since your last DNS report.</p>
         </div>
         <div class="terminal">
@@ -35,7 +35,7 @@
             <label class="choice" id="record-choice" hidden>Record type <select id="record-type"></select></label>
             <label for="host">Domain or IP address</label>
             <div class="input-line">
-              <input id="host" type="text" inputmode="url" maxlength="512" autocapitalize="none" spellcheck="false" placeholder="coolcode.ca" required>
+              <input id="host" type="text" inputmode="url" maxlength="512" autocapitalize="none" spellcheck="false" placeholder="coolcode.ca" value="coolcode.ca" required>
               <button class="primary" type="submit">Look up</button>
             </div>
             <label class="choice" for="resolver">
@@ -45,7 +45,7 @@
             <div id="selector-box"><label class="selectors-label" for="dkim-selectors">DKIM selectors (optional)</label>
             <input id="dkim-selectors" class="selectors" type="text" maxlength="768" spellcheck="false" autocapitalize="none" autocomplete="off" placeholder="selector1, selector2" aria-describedby="selectors-tip">
             <p class="selector-tip" id="selectors-tip">From a DKIM-Signature header, use d= for the domain and s= for the selector. Up to three selectors.</p></div>
-          </form>
+          </form><nav class="preset-links" aria-label="Common uses"><a href="./email-dns-check/">Check email DNS</a> · <a href="./compare-resolvers/">Compare two DNS resolvers</a></nav>
           <div class="samples" aria-label="Example searches">
             <button type="button" data-example="coolcode.ca">coolcode.ca</button>
             <button type="button" data-example="canada.ca">canada.ca</button>

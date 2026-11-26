@@ -1,7 +1,9 @@
 """Build the standalone GitHub Pages site."""
 
 from pathlib import Path
+import json
 import shutil
+from search_pages import render_pages, PAGES
 
 
 root = Path(__file__).resolve().parent.parent
@@ -14,4 +16,5 @@ for filename in required:
 if dist.exists():
     shutil.rmtree(dist)
 shutil.copytree(web, dist)
+render_pages(dist, json.loads((root / "tool.json").read_text()), PAGES)
 print("Built dist.")

@@ -457,3 +457,13 @@ get('baseline').addEventListener('change', async () => {
     if (current === report && file === get('baseline').files[0]) output.textContent = error instanceof SyntaxError ? 'Choose a valid DNS Lens JSON file.' : error.message;
   }
 });
+
+const preset = document.body.dataset;
+if (preset.host) {
+  get('host').value = preset.host;
+  get('mode').value = preset.mode;
+  get('resolver').value = preset.resolver || 'google';
+  get('dkim-selectors').value = preset.selector || '';
+  showInputs();
+  runLookup(preset.host);
+}

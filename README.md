@@ -36,6 +36,8 @@ The resolver menu includes a side-by-side Google and Cloudflare comparison. Reco
 Choose Website and www to look up IPv4, IPv6, aliases and HTTPS service records for both names. Mail setup focuses on delivery and authentication. Nameservers and signing returns NS, SOA, DS, DNSKEY and CAA at the exact input name, with registry information. One record at an exact name accepts service labels such as _dmarc and _sip._tcp and supports TXT, SRV, TLSA, SSHFP, SVCB and other types. IP addresses use the appropriate reverse PTR name.
 
 <!-- coolcode:guide -->
+Quick starts at [Email DNS](https://coolcode.ca/dnslens/email-dns-check/) and [resolver comparison](https://coolcode.ca/dnslens/compare-resolvers/) load editable lookups for the named public example. DKIM needs the selector from a signed message. The resolver receives each lookup.
+
 Download a DNS report before changing a domain, repeat the lookup afterwards and open the earlier JSON to see which answers changed at the same resolver.
 <!-- /coolcode:guide -->
 

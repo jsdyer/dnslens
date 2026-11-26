@@ -151,3 +151,8 @@ footer { border-top: 1px solid var(--line); }
 .snapshot label, #diff-state { display: block; margin-top: .75rem; }
 .snapshot input { max-width: 100%; }
 #diff-rows .find { padding-inline: 0; }
+
+.preset-links{display:flex;flex-wrap:wrap;gap:.45rem .6rem;margin:.8rem 0}
+.preset-links a{color:#d4e6bc}
+.hero h1{font-size:clamp(2.4rem,5vw,4.5rem);overflow-wrap:anywhere}
+.example-intro{max-width:43ch;margin:.7rem 0;line-height:1.45}

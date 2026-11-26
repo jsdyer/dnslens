@@ -1,7 +1,7 @@
 {
   "id": "dnslens",
-  "title": "DNS Lens",
-  "description": "Look up website, mail and exact-name DNS records, compare resolvers and compare saved reports.",
+  "title": "DNS Record Lookup & Mail Configuration Checker",
+  "description": "Check public DNS, compare Google and Cloudflare replies, and diagnose email records for a domain.",
   "category": "liminal-tools",
   "tags": [
     "spf",
